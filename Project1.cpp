@@ -1,4 +1,4 @@
-﻿#include <SFML/Window.hpp>
+#include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/OpenGL.hpp>
 
@@ -12,6 +12,41 @@
 #include <vector>
 #include <cstdlib>
 
+
+GLuint g_grassTexture = 0;
+
+bool loadGrassTexture(const std::string& path)
+{
+    sf::Image img;
+    if (!img.loadFromFile(path)) {
+        std::cerr << "Nie udalo sie zaladowac tekstury trawy: " << path << std::endl;
+        return false;
+    }
+
+    img.flipVertically();
+
+    glGenTextures(1, &g_grassTexture);
+    glBindTexture(GL_TEXTURE_2D, g_grassTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    gluBuild2DMipmaps(
+        GL_TEXTURE_2D,
+        GL_RGBA,
+        img.getSize().x,
+        img.getSize().y,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        img.getPixelsPtr()
+    );
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return true;
+}
 
 struct Ant {
     float x, y, z;
@@ -98,17 +133,46 @@ void drawGround()
     float step = 2.0f;
 
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glColor3f(0.2f, 0.6f, 0.2f);
+
+    float texScale = 0.2f;
+
+    if (g_grassTexture != 0) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, g_grassTexture);
+        glColor3f(1.0f, 1.0f, 1.0f); 
+    }
+    else {
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.2f, 0.6f, 0.2f);
+    }
 
     for (float z = -size; z < size; z += step) {
         glBegin(GL_TRIANGLE_STRIP);
         for (float x = -size; x <= size; x += step) {
+
+            float s = (x + size) * texScale;
+            float t1 = (z + size) * texScale;
+            float t2 = (z + step + size) * texScale;
+
+            if (g_grassTexture != 0) {
+                glTexCoord2f(s, t1);
+            }
             glVertex3f(x, 0.0f, z);
+
+            if (g_grassTexture != 0) {
+                glTexCoord2f(s, t2);
+            }
             glVertex3f(x, 0.0f, z + step);
         }
         glEnd();
     }
+
+    if (g_grassTexture != 0) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+    }
 }
+
 
 float getGroundHeightAt(float x, float z)
 {
@@ -648,6 +712,10 @@ void initOpenGL()
 
     setupLighting();
 
+    if (!loadGrassTexture("grass.png")) {
+        std::cerr << "Error przy ładowaniu tekstury\n";
+    }
+
     g_quadric = gluNewQuadric();
     if (g_quadric) {
         gluQuadricNormals(g_quadric, GLU_SMOOTH);
@@ -664,7 +732,6 @@ void addRandomFood()
 
     Food f;
     f.amount = 20;
-
     const float HALF_SIZE = 50.0f - 2.0f;
     float rx = (std::rand() % 1000) / 1000.0f;
     float rz = (std::rand() % 1000) / 1000.0f;
